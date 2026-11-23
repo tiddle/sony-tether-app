@@ -120,7 +120,7 @@ fn release(args: &[String]) -> Result<(), String> {
 
     let zip_path = Path::new(DIST).join(format!("{staging_name}.zip"));
     let files = collect_files(&staging)?;
-    write_zip(&zip_path, &files)?;
+    write_zip(&zip_path, &staging, &files)?;
     remove_dir(&staging)?;
 
     let digest = sha256_of(&zip_path)?;
@@ -344,7 +344,7 @@ fn collect_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(relative)
 }
 
-fn write_zip(zip_path: &Path, files: &[PathBuf]) -> Result<(), String> {
+fn write_zip(zip_path: &Path, source_root: &Path, files: &[PathBuf]) -> Result<(), String> {
     let handle = fs::File::create(zip_path)
         .map_err(|err| format!("cannot create {}: {err}", zip_path.display()))?;
     let mut writer = zip::ZipWriter::new(handle);
@@ -365,8 +365,9 @@ fn write_zip(zip_path: &Path, files: &[PathBuf]) -> Result<(), String> {
             .start_file(name.clone(), options)
             .map_err(|err| format!("cannot add {name}: {err}"))?;
 
-        let mut source =
-            fs::File::open(file).map_err(|err| format!("cannot open {}: {err}", file.display()))?;
+        let path_in_stage = source_root.join(file);
+        let mut source = fs::File::open(&path_in_stage)
+            .map_err(|err| format!("cannot open {}: {err}", path_in_stage.display()))?;
         std::io::copy(&mut source, &mut writer)
             .map_err(|err| format!("cannot write {name}: {err}"))?;
     }
