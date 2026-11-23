@@ -44,11 +44,30 @@ cargo run -p tether-app
 
 The binary is `target\release\tether-app.exe`.
 
+## Release build
+
+```powershell
+cargo xtask release
+```
+
+This builds in release mode and writes a zip to `dist/`, prints its SHA-256, and adds a `BUILD-INFO.txt` stating whether the build can tether.
+
+| What you want | Command |
+|---|---|
+| A build that can drive a camera | `cargo xtask release` with `SONY_SDK_ROOT` set |
+| The same, with Sony's libraries inside the zip | add `--bundle-sdk $env:SONY_SDK_ROOT` |
+| A packaging test with no SDK | `cargo xtask release --allow-stub` |
+
+Without `SONY_SDK_ROOT` the tool refuses to package, so a build that cannot tether cannot be published by accident. `--allow-stub` overrides that, and the artifact is then named `...-stub` with the warning in its `BUILD-INFO.txt`.
+
+Whether you may put Sony's libraries in the zip is Sony's decision. If you are unsure, ship without `--bundle-sdk`; users then point `TETHER_SDK_DIR` at their own SDK. See [docs/sdk-layout.md](docs/sdk-layout.md).
+
 ## Layout
 
 | Path | What it is |
 |---|---|
 | `apps/tether-app` | The egui window. UI only |
+| `apps/tether-app/src/review.rs` | The Last capture tab: decode one file, keep it in a texture |
 | `crates/camera-core` | Backend trait, event types, session and filename rules, capability matrix. No vendor code |
 | `crates/backend-sdk` | The only crate that touches Sony's SDK. C++ shim lives in `native/` |
 | `crates/camera-core/data/cameras.json` | The capability matrix: what is known per body, per feature |

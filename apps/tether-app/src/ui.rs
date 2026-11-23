@@ -9,6 +9,8 @@ use camera_core::{
 };
 use eframe::egui;
 
+use crate::review::PhotoView;
+
 const LOG_LINES_SHOWN: usize = 8;
 const LOG_LINES_KEPT: usize = 200;
 
@@ -19,6 +21,28 @@ enum Status {
     Connecting,
     Live,
     Failed(String),
+}
+
+/// Which view fills the central area.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum View {
+    Live,
+    Review,
+}
+
+impl View {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Live => "Live view",
+            Self::Review => "Last capture",
+        }
+    }
+}
+
+/// One capture the camera reported, plus the file it reached on disk once saved.
+struct CaptureRow {
+    image: CapturedImage,
+    saved: Option<PathBuf>,
 }
 
 pub struct TetherApp {
@@ -34,7 +58,9 @@ pub struct TetherApp {
     folder_text: String,
 
     last_frame: Option<FrameRef>,
-    captures: Vec<CapturedImage>,
+    captures: Vec<CaptureRow>,
+    view: View,
+    photo: PhotoView,
     log: Vec<String>,
 }
 
@@ -54,6 +80,15 @@ impl TetherApp {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join("captures");
 
+        let newest = camera_core::session::newest_viewable(&root);
+        let mut photo = PhotoView::new();
+        photo.show(newest.clone());
+        let view = if newest.is_some() {
+            View::Review
+        } else {
+            View::Live
+        };
+
         let mut app = Self {
             backend: Box::new(SdkBackend::new()),
             events_tx,
@@ -65,12 +100,17 @@ impl TetherApp {
             folder_text: root.display().to_string(),
             last_frame: None,
             captures: Vec::new(),
+            view,
+            photo,
             log: Vec::new(),
         };
 
         app.push_log(format!("backend: {}", app.backend.name()));
         if !SDK_CONFIGURED {
             app.push_log("Sony SDK not configured in this build (SONY_SDK_ROOT unset)".into());
+        }
+        if let Some(path) = &newest {
+            app.push_log(format!("showing the newest capture: {}", path.display()));
         }
         app
     }
@@ -117,10 +157,11 @@ impl TetherApp {
     ///
     /// Blocking on purpose for now: the download worker thread arrives in M2.
     fn save_last_capture(&mut self) {
-        let Some(image) = self.captures.last().cloned() else {
+        let Some(row) = self.captures.last() else {
             self.push_log("nothing to save: no capture received yet".into());
             return;
         };
+        let image = row.image.clone();
 
         let extension = image
             .filename_hint
@@ -149,6 +190,11 @@ impl TetherApp {
         match self.backend.download(&image, &path) {
             Ok(()) => {
                 self.session.reserve_through(1);
+                if let Some(row) = self.captures.last_mut() {
+                    row.saved = Some(path.clone());
+                }
+                self.photo.show(Some(path.clone()));
+                self.view = View::Review;
                 self.push_log(format!("saved {}", path.display()));
             }
             Err(err) => self.push_log(format!("download failed: {err}")),
@@ -168,6 +214,7 @@ impl TetherApp {
                     ));
                     self.info = Some(info);
                     self.status = Status::Live;
+                    self.view = View::Live;
                 }
                 BackendEvent::Disconnected => {
                     self.push_log("camera disconnected".into());
@@ -181,7 +228,7 @@ impl TetherApp {
                         "captured {} ({} bytes)",
                         image.filename_hint, image.size_bytes
                     ));
-                    self.captures.push(image);
+                    self.captures.push(CaptureRow { image, saved: None });
                 }
                 BackendEvent::DownloadProgress {
                     received, total, ..
@@ -260,20 +307,33 @@ impl TetherApp {
 
         ui.separator();
         ui.heading("Captures");
+        let mut open: Option<PathBuf> = None;
         if self.captures.is_empty() {
             ui.label(egui::RichText::new("none yet").weak());
         } else {
             egui::ScrollArea::vertical()
                 .max_height(160.0)
                 .show(ui, |ui| {
-                    for image in self.captures.iter().rev() {
-                        ui.label(format!(
+                    for row in self.captures.iter().rev() {
+                        let label = format!(
                             "{}  {:.1} MB",
-                            image.filename_hint,
-                            image.size_bytes as f64 / 1_048_576.0
-                        ));
+                            row.image.filename_hint,
+                            row.image.size_bytes as f64 / 1_048_576.0
+                        );
+                        let saved = row.saved.clone();
+                        let clicked = ui
+                            .add_enabled_ui(saved.is_some(), |ui| ui.selectable_label(false, label))
+                            .inner
+                            .clicked();
+                        if clicked {
+                            open = saved;
+                        }
                     }
                 });
+        }
+        if let Some(path) = open {
+            self.photo.show(Some(path));
+            self.view = View::Review;
         }
         ui.add_enabled_ui(!self.captures.is_empty(), |ui| {
             if ui.button("Save last capture").clicked() {
@@ -319,6 +379,33 @@ impl TetherApp {
                     );
                 }
             }
+        }
+    }
+
+    /// The central area: two views, chosen by a tab strip.
+    fn central(&mut self, ui: &mut egui::Ui) {
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut self.view, View::Live, View::Live.label());
+            ui.selectable_value(&mut self.view, View::Review, View::Review.label());
+            ui.separator();
+            if self.view == View::Live {
+                let hint = self
+                    .photo
+                    .path()
+                    .and_then(|path| {
+                        path.file_name()
+                            .map(|name| name.to_string_lossy().to_string())
+                    })
+                    .map(|name| format!("last capture: {name}"))
+                    .unwrap_or_else(|| "no capture yet".to_owned());
+                ui.label(egui::RichText::new(hint).weak());
+            }
+        });
+        ui.separator();
+
+        match self.view {
+            View::Live => self.live_view(ui),
+            View::Review => self.photo.ui(ui),
         }
     }
 
@@ -417,7 +504,7 @@ impl eframe::App for TetherApp {
             .default_size(300.0)
             .show(ui, |ui| self.side_panel(ui));
         egui::Panel::bottom("shutter").show(ui, |ui| self.shutter_bar(ui));
-        egui::CentralPanel::default().show(ui, |ui| self.live_view(ui));
+        egui::CentralPanel::default().show(ui, |ui| self.central(ui));
 
         if self.is_connected() {
             // Live view arrives on a backend thread; keep the UI polling.

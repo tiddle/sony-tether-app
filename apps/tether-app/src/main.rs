@@ -4,6 +4,7 @@
 //! automatic download. Today it shows the window, the wiring between the UI and
 //! the backend, and an honest status line when the Sony SDK is not configured.
 
+mod review;
 mod ui;
 
 fn main() -> eframe::Result {

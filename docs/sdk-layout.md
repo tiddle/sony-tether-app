@@ -64,6 +64,18 @@ The app still starts. It shows the red banner, and the log line names every path
 it tried. `SdkBackend::connect` returns the same list as an error, so a bug report
 carries the diagnosis.
 
+## Packaging
+
+`cargo xtask release` builds and packages a zip into `dist/`, and prints its SHA-256.
+
+| Mode | Command | What ships | Can tether |
+|---|---|---|---|
+| Stub | `cargo xtask release --allow-stub` | exe, docs | No. The tool refuses without the flag, and names the artifact `...-stub` |
+| SDK, user installs | `cargo xtask release` with `SONY_SDK_ROOT` set | exe, docs | Yes, once the user points `TETHER_SDK_DIR` at their SDK |
+| SDK, bundled | `cargo xtask release --bundle-sdk <dir>` | exe, docs, `sdk/` | Yes, out of the box. Only if the licence allows redistribution |
+
+Every package contains `BUILD-INFO.txt` stating the version, the commit, and whether the build can tether. Read it before publishing anything.
+
 ## What lands in M1
 
 - `dlopen` / `LoadLibrary` of `SHIM_FILE` from `SdkLocation::file()`.

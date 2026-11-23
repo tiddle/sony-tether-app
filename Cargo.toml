@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["apps/tether-app", "crates/camera-core", "crates/backend-sdk"]
+members = ["apps/tether-app", "crates/camera-core", "crates/backend-sdk", "xtask"]
 
 [workspace.package]
 version = "0.1.0"

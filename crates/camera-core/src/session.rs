@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 use crate::error::{Result, TetherError};
 
@@ -72,9 +73,66 @@ fn validate_extension(extension: &str) -> Result<()> {
     }
 }
 
+/// Extensions the review view can decode and show directly.
+pub const VIEWABLE_EXTENSIONS: &[&str] = &["jpg", "jpeg", "png"];
+
+/// Extensions that are camera RAW. Listed apart because showing them needs the
+/// JPEG preview embedded inside the file, which we do not extract yet.
+pub const RAW_EXTENSIONS: &[&str] = &["arw", "tif", "tiff"];
+
+/// Lowercase extension of `path`, if it has one.
+pub fn extension_of(path: &Path) -> Option<String> {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .filter(|ext| !ext.is_empty())
+}
+
+pub fn is_viewable_extension(extension: &str) -> bool {
+    VIEWABLE_EXTENSIONS
+        .iter()
+        .any(|known| known.eq_ignore_ascii_case(extension))
+}
+
+pub fn is_raw_extension(extension: &str) -> bool {
+    RAW_EXTENSIONS
+        .iter()
+        .any(|known| known.eq_ignore_ascii_case(extension))
+}
+
+/// Newest file in `dir` that the review view can show.
+///
+/// A missing or unreadable directory means "nothing to show", not an error: on a
+/// first run there is no folder yet, and that is normal.
+pub fn newest_viewable(dir: &Path) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    let mut newest: Option<(SystemTime, PathBuf)> = None;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        match extension_of(&path) {
+            Some(extension) if is_viewable_extension(&extension) => {}
+            _ => continue,
+        }
+        let Ok(modified) = entry.metadata().and_then(|meta| meta.modified()) else {
+            continue;
+        };
+        if newest.as_ref().is_none_or(|(best, _)| modified > *best) {
+            newest = Some((modified, path));
+        }
+    }
+
+    newest.map(|(_, path)| path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs::File;
+    use std::time::Duration;
 
     #[test]
     fn names_are_zero_padded_and_sequential() {
@@ -110,5 +168,61 @@ mod tests {
         assert!(session.next_filename("../x").is_err());
         assert!(session.next_filename("a/b").is_err());
         assert!(session.next_filename("").is_err());
+    }
+
+    fn write_at(dir: &Path, name: &str, offset_secs: u64) -> PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, b"x").unwrap();
+        let stamp = SystemTime::UNIX_EPOCH + Duration::from_secs(1_700_000_000 + offset_secs);
+        File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(stamp)
+            .unwrap();
+        path
+    }
+
+    #[test]
+    fn newest_viewable_picks_the_most_recent_image() {
+        let tmp = tempfile::tempdir().unwrap();
+        write_at(tmp.path(), "capture_0001.jpg", 10);
+        let newer = write_at(tmp.path(), "capture_0002.png", 20);
+        write_at(tmp.path(), "notes.txt", 30);
+
+        assert_eq!(
+            newest_viewable(tmp.path()).as_deref(),
+            Some(newer.as_path())
+        );
+    }
+
+    #[test]
+    fn newest_viewable_ignores_raw_for_now() {
+        let tmp = tempfile::tempdir().unwrap();
+        let jpeg = write_at(tmp.path(), "capture_0001.jpg", 10);
+        write_at(tmp.path(), "capture_0002.arw", 20);
+
+        assert_eq!(newest_viewable(tmp.path()).as_deref(), Some(jpeg.as_path()));
+    }
+
+    #[test]
+    fn newest_viewable_tolerates_an_absent_folder() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert_eq!(newest_viewable(&tmp.path().join("missing")), None);
+        assert_eq!(newest_viewable(tmp.path()), None);
+    }
+
+    #[test]
+    fn extension_classification() {
+        assert!(is_viewable_extension("jpg"));
+        assert!(is_viewable_extension("JPEG"));
+        assert!(is_raw_extension("arw"));
+        assert!(!is_viewable_extension("arw"));
+        assert!(!is_raw_extension("jpg"));
+        assert_eq!(
+            extension_of(Path::new("/a/photo.ARW")).as_deref(),
+            Some("arw")
+        );
+        assert_eq!(extension_of(Path::new("/a/photo")), None);
     }
 }

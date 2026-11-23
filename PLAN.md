@@ -25,9 +25,9 @@ The first version is deliberately small. Exposure control, focus point, hot fold
 
 ## 3. Scope of the first usable version
 
-**In:** USB connection to the A7 IV; live view; half-press and full release; automatic download of each capture into a chosen folder with a numbered filename; thumbnail strip of recent shots; connection status; plain-text log recording body model, firmware and SDK version.
+**In:** USB connection to the A7 IV; live view; half-press and full release; automatic download of each capture into a chosen folder with a numbered filename; a **Last capture** tab that shows the newest file in the folder and opens by default when one exists; thumbnail strip of recent shots; connection status; plain-text log recording body model, firmware and SDK version.
 
-**Out for now:** exposure control, autofocus point, hot folder into Lightroom or Capture One, in-app review and rating, video, wireless, every body except the A7 IV.
+**Out for now:** exposure control, autofocus point, hot folder into Lightroom or Capture One, rating and flagging, video, wireless, every body except the A7 IV.
 
 Exposure control is deferred on purpose. It is the feature that multiplies per-body testing more than any other, and it is the easiest to add once the transport path is proven.
 
@@ -94,7 +94,7 @@ Rules:
 
 1. The repository never contains Sony headers, libraries, samples or documentation.
 2. `SONY_SDK_ROOT` is where our C++ shim compiles against Sony's headers. `crates/backend-sdk/build.rs` warns and compiles a stub backend when it is unset. The stub reports "SDK not configured" and never pretends to work.
-3. The stub exists for developer convenience only. **Release builds must set `SONY_SDK_ROOT`.** Shipping a stub is a defect.
+3. A build without the SDK cannot tether. `cargo xtask release` refuses to package one unless `--allow-stub` is passed, and then the artifact is named `...-stub` and the first line of its `BUILD-INFO.txt` says it cannot tether a camera. Publishing such a build is allowed, for pre-alpha review. Describing it as a working release is the defect.
 
 **Runtime**
 
@@ -123,8 +123,16 @@ That last detail is the point: until now the Windows/MSVC build path had never b
 CI **cannot** build or test the SDK path. Sony's licence keeps the SDK out of a public repository, a hosted runner cannot download it, and smuggling it through secrets would be redistribution. So:
 
 - Release builds come from a self-hosted runner on the developer's Windows PC, or from that PC by hand.
+- `.github/workflows/release.yml` encodes both kinds: a hosted stub build for packaging tests, and an SDK build that runs only on a self-hosted runner labelled `sony-sdk`.
 - A green run proves compilation and unit tests, not tethering. Tethering is proved on a desk, with the camera plugged in.
 - Automated tethering tests need a self-hosted runner with the body attached. Worth adding from M2 onward; not worth it before M1 works.
+
+**Runs** (`cargo xtask release`)
+
+- Without `SONY_SDK_ROOT` the tool refuses, so a stub cannot be published by accident.
+- `--allow-stub` packages anyway, into an artifact whose name ends in `-stub`.
+- `--bundle-sdk <dir>` copies Sony's runtime directory into the package as `sdk/`. Only use it if the agreement allows redistribution.
+- Every package carries `BUILD-INFO.txt` stating the version, commit, build time, and whether the build can tether.
 
 ## 9. Milestones
 
@@ -132,7 +140,7 @@ CI **cannot** build or test the SDK path. Sony's licence keeps the SDK out of a 
 |---|---|---|
 | **M0** | Finish Sony developer registration. On approval, confirm the download has Windows x64 libraries, and compare firmware 6.02 against the SDK's tested-firmware list | Sony's own sample builds and runs |
 | **M1** | `cxx` shim and `SdkBackend::connect`. Dump properties, save one live-view frame, capture one RAW | The RAW opens, and the matrix row for `ILCE-7M4` is filled in with evidence |
-| **M2** | Real UI: live view texture, half press and release, download worker thread, numbered filenames, thumbnails | Acceptance criteria 1–3 |
+| **M2** | Real UI: live view texture, half press and release, download worker thread, numbered filenames, thumbnails. The Last capture tab already exists; it needs real files to display | Acceptance criteria 1–3 |
 | **M3** | Unplug and replug, camera sleep and wake, USB error recovery, settings persistence, log file | Acceptance criteria 4–5 |
 | **M4** | Packaging: portable zip and installer, bundled C runtime, EULA gate, first-run note about PC Remote mode | A clean Windows machine runs it with no setup |
 | **M5** | Wireless, and any second body. Only after M4 ships | Not committed |
@@ -153,6 +161,7 @@ M0 is the only blocking step and the only one that needs an action outside this 
 ## 11. Deliberately deferred
 
 - Exposure control, focus point, bracketing, timelapse.
+- RAW preview in the Last capture tab. Sony ARW carries a JPEG preview inside the file; extracting it is a small job, but it waits until the download path works.
 - Hot folder and Lightroom or Capture One integration.
 - Wireless in any form.
 - Any body except the A7 IV.
