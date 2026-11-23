@@ -35,7 +35,7 @@ jobs:
     if: inputs.build == 'stub'
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -47,7 +47,7 @@ jobs:
         run: cargo xtask release --allow-stub
 
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tether-app-stub-no-sdk
           path: dist/*.zip
@@ -58,7 +58,7 @@ jobs:
     if: inputs.build == 'sdk'
     runs-on: [self-hosted, windows, x64, sony-sdk]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check the SDK is present on this runner
         shell: pwsh
@@ -76,7 +76,7 @@ jobs:
         run: cargo xtask release --bundle-sdk $env:SONY_SDK_ROOT
 
       - name: Upload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tether-app-with-sdk
           path: dist/*.zip

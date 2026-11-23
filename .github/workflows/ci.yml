@@ -29,7 +29,7 @@ jobs:
     name: windows (stub backend, no Sony SDK)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -52,7 +52,7 @@ jobs:
         run: cargo build -p tether-app --locked
 
       - name: Upload the binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: tether-app-windows-stub
           path: target/debug/tether-app.exe
