@@ -1,0 +1,59 @@
+name: ci
+
+# What this workflow can and cannot do:
+#
+# CAN: build and test the Windows/MSVC code path with `SONY_SDK_ROOT` unset. That
+# covers every crate except the Sony binding, which compiles as a stub.
+#
+# CANNOT: build or test anything that links Sony's Camera Remote SDK. Their
+# licence does not allow the SDK in a public repository, cannot be downloaded on
+# a hosted runner, and must not be smuggled in through secrets. Release builds
+# come from a self-hosted runner or a developer machine that has the SDK.
+#
+# Consequence: a green run proves compilation and unit tests, not tethering.
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  SONY_SDK_ROOT: ""
+
+jobs:
+  windows:
+    name: windows (stub backend, no Sony SDK)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Lint camera-independent crates
+        run: cargo clippy -p camera-core -p backend-sdk --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test -p camera-core -p backend-sdk
+
+      - name: Build the app
+        run: cargo build -p tether-app --locked
+
+      - name: Upload the binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: tether-app-windows-stub
+          path: target/debug/tether-app.exe
+          if-no-files-found: error

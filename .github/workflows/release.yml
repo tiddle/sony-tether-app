@@ -1,0 +1,83 @@
+name: release
+
+# Two kinds of release build, and they are not interchangeable.
+#
+#   stub - hosted runner, no Sony SDK. Compiles and packages, and cannot tether a
+#          camera. The artifact name ends in -stub and BUILD-INFO.txt says so.
+#   sdk  - self-hosted runner that has the Sony Camera Remote SDK installed. This
+#          is the only way to produce an artifact that can drive a camera.
+#
+# A hosted runner must never receive Sony's libraries, bundled or otherwise: the
+# licence keeps them out of public infrastructure. See PLAN.md section 7.
+#
+# Add a `push: tags: ['v*']` trigger once the self-hosted runner exists. Until
+# then, releases are started by hand so nothing queues forever.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "stub = cannot tether. sdk = needs a self-hosted runner with the SDK."
+        type: choice
+        options: [stub, sdk]
+        default: stub
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.build }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  stub:
+    name: package (stub, no SDK)
+    if: inputs.build == 'stub'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-release
+
+      - name: Package
+        run: cargo xtask release --allow-stub
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: tether-app-stub-no-sdk
+          path: dist/*.zip
+          if-no-files-found: error
+
+  sdk:
+    name: package (with SDK, self-hosted)
+    if: inputs.build == 'sdk'
+    runs-on: [self-hosted, windows, x64, sony-sdk]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the SDK is present on this runner
+        shell: pwsh
+        run: |
+          if (-not $env:SONY_SDK_ROOT) { throw "SONY_SDK_ROOT is not set on this runner" }
+          if (-not (Test-Path $env:SONY_SDK_ROOT)) {
+            throw "SONY_SDK_ROOT points at a missing directory: $env:SONY_SDK_ROOT"
+          }
+
+      # --bundle-sdk copies Sony's runtime directory into the package. Only do
+      # this if the licence allows redistribution. If it does not, drop that
+      # flag: the app finds a user-installed SDK through TETHER_SDK_DIR.
+      - name: Package
+        shell: pwsh
+        run: cargo xtask release --bundle-sdk $env:SONY_SDK_ROOT
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: tether-app-with-sdk
+          path: dist/*.zip
+          if-no-files-found: error
