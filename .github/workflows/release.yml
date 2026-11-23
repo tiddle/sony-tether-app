@@ -90,7 +90,7 @@ jobs:
             echo
             echo "### Checksums"
             echo '```'
-            sha256sum dist/*.zip
+            (cd dist && sha256sum *.zip)
             echo '```'
           } > notes.md
 
@@ -139,7 +139,7 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          sha256sum dist/*.zip > checksums.txt
+          (cd dist && sha256sum *.zip) > checksums.txt
           gh release create "$TAG" dist/*.zip checksums.txt \
             --title "$TAG" \
             --generate-notes

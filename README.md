@@ -62,6 +62,20 @@ Without `SONY_SDK_ROOT` the tool refuses to package, so a build that cannot teth
 
 Whether you may put Sony's libraries in the zip is Sony's decision. If you are unsure, ship without `--bundle-sdk`; users then point `TETHER_SDK_DIR` at their own SDK. See [docs/sdk-layout.md](docs/sdk-layout.md).
 
+## Publishing a release
+
+Releases are cut by hand:
+
+```powershell
+gh workflow run release.yml -f build=sdk -f tag=v0.2.0 -f publish=true
+```
+
+- `build=sdk` publishes a normal release, and needs the self-hosted runner.
+- `build=stub` publishes a **pre-release** whose title says it cannot tether. Use it to share the interface, never to represent a working build.
+- Leave `tag` empty to upload a workflow artifact without creating a release.
+
+Both paths run the tests first, so a red build cannot reach the release page.
+
 ## Layout
 
 | Path | What it is |

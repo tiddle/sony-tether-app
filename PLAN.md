@@ -124,6 +124,8 @@ CI **cannot** build or test the SDK path. Sony's licence keeps the SDK out of a 
 
 - Release builds come from a self-hosted runner on the developer's Windows PC, or from that PC by hand.
 - `.github/workflows/release.yml` encodes both kinds: a hosted stub build for packaging tests, and an SDK build that runs only on a self-hosted runner labelled `sony-sdk`.
+- Publishing is opt-in per run: `-f tag=v0.2.0 -f publish=true`. A stub build can only appear as a GitHub pre-release whose title says it cannot tether. A normal release comes only from the SDK build, and both paths run the tests before packaging.
+- Publishing needs `contents: write` in the workflow. Without it the artifact uploads and the release step fails on permissions.
 - A green run proves compilation and unit tests, not tethering. Tethering is proved on a desk, with the camera plugged in.
 - Automated tethering tests need a self-hosted runner with the body attached. Worth adding from M2 onward; not worth it before M1 works.
 
