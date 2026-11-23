@@ -1,0 +1,12 @@
+[package]
+name = "camera-core"
+description = "Backend-agnostic types, session rules and capability matrix for the tether app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

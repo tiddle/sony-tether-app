@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "cameras": [
+    {
+      "id": "ILCE-7M4",
+      "name": "A7 IV",
+      "backend": "sony-camera-remote-sdk",
+      "transports": ["usb"],
+      "tested_firmware": ["6.02"],
+      "features": {
+        "live_view": "unverified",
+        "capture": "unverified",
+        "download_jpeg": "unverified",
+        "download_raw": "unverified",
+        "exposure_control": "out_of_scope",
+        "focus_point": "out_of_scope",
+        "video_record": "out_of_scope"
+      }
+    }
+  ]
+}

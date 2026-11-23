@@ -1,0 +1,16 @@
+[package]
+name = "tether-app"
+description = "Tether a Sony A7 camera over USB: live view, shutter, download"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "tether-app"
+path = "src/main.rs"
+
+[dependencies]
+camera-core = { workspace = true }
+backend-sdk = { workspace = true }
+eframe = "0.37"

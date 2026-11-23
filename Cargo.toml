@@ -1,0 +1,26 @@
+[workspace]
+resolver = "3"
+members = ["apps/tether-app", "crates/camera-core", "crates/backend-sdk"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+
+[workspace.dependencies]
+camera-core = { path = "crates/camera-core" }
+backend-sdk = { path = "crates/backend-sdk" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[profile.dev]
+# No debug info by default. This project is developed on a small machine and on
+# Windows, where a full-debuginfo link of eframe is slow and memory hungry.
+# Raise to 1 or 2 on a workstation when you need a real debugger.
+debug = 0
+
+[profile.release]
+lto = "thin"
+strip = "symbols"

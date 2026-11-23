@@ -1,0 +1,20 @@
+# Rust build output
+/target
+
+# Sony's SDK is never committed. Put it here if you keep it beside the repo.
+/sony-sdk
+/CrSDK*
+
+# Local environment
+.env
+*.local
+
+# Editor and OS noise
+.vscode/
+.idea/
+*.user
+Thumbs.db
+.DS_Store
+
+# App output during manual testing
+/captures
