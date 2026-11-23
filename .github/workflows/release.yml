@@ -3,15 +3,21 @@ name: release
 # Two kinds of release build, and they are not interchangeable.
 #
 #   stub - hosted runner, no Sony SDK. Compiles and packages, and cannot tether a
-#          camera. The artifact name ends in -stub and BUILD-INFO.txt says so.
+#          camera. If published, it becomes a GitHub pre-release whose title says
+#          so, so nobody downloads it expecting a working tether.
 #   sdk  - self-hosted runner that has the Sony Camera Remote SDK installed. This
-#          is the only way to produce an artifact that can drive a camera.
+#          is the only build that can drive a camera, and the only one that should
+#          ever appear as a normal release.
 #
 # A hosted runner must never receive Sony's libraries, bundled or otherwise: the
 # licence keeps them out of public infrastructure. See PLAN.md section 7.
 #
+# Publishing needs `contents: write`. Without it the artifact uploads fine and the
+# release step fails with a permissions error.
+#
 # Add a `push: tags: ['v*']` trigger once the self-hosted runner exists. Until
-# then, releases are started by hand so nothing queues forever.
+# then, releases are started by hand so nothing queues forever waiting for a
+# machine that is not there.
 
 on:
   workflow_dispatch:
@@ -21,10 +27,21 @@ on:
         type: choice
         options: [stub, sdk]
         default: stub
+      tag:
+        description: "Tag to publish, for example v0.1.0-prealpha.1. Leave empty to upload a workflow artifact only."
+        type: string
+        default: ""
+      publish:
+        description: "Create a GitHub Release for that tag. Stub builds are always pre-releases."
+        type: boolean
+        default: false
 
 concurrency:
-  group: ${{ github.workflow }}-${{ inputs.build }}
+  group: ${{ github.workflow }}-${{ inputs.build }}-${{ inputs.tag }}
   cancel-in-progress: false
+
+permissions:
+  contents: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -43,6 +60,10 @@ jobs:
         with:
           key: windows-release
 
+      # Skip this and a broken build reaches the release page.
+      - name: Test
+        run: cargo test -p camera-core -p backend-sdk
+
       - name: Package
         run: cargo xtask release --allow-stub
 
@@ -52,6 +73,31 @@ jobs:
           name: tether-app-stub-no-sdk
           path: dist/*.zip
           if-no-files-found: error
+
+      - name: Publish as a pre-release
+        if: inputs.publish && inputs.tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          {
+            echo "**This build cannot tether a camera.** It was compiled without the Sony Camera Remote SDK."
+            echo
+            echo "It opens the interface, shows the Live view and Last capture tabs, and says what is missing."
+            echo "Useful for a look at where this is going. Not useful for a shoot."
+            echo
+            echo "### Checksums"
+            echo '```'
+            sha256sum dist/*.zip
+            echo '```'
+          } > notes.md
+
+          gh release create "$TAG" dist/*.zip \
+            --title "$TAG - pre-alpha, interface only" \
+            --notes-file notes.md \
+            --prerelease
 
   sdk:
     name: package (with SDK, self-hosted)
@@ -68,6 +114,9 @@ jobs:
             throw "SONY_SDK_ROOT points at a missing directory: $env:SONY_SDK_ROOT"
           }
 
+      - name: Test
+        run: cargo test -p camera-core -p backend-sdk
+
       # --bundle-sdk copies Sony's runtime directory into the package. Only do
       # this if the licence allows redistribution. If it does not, drop that
       # flag: the app finds a user-installed SDK through TETHER_SDK_DIR.
@@ -81,3 +130,16 @@ jobs:
           name: tether-app-with-sdk
           path: dist/*.zip
           if-no-files-found: error
+
+      - name: Publish
+        if: inputs.publish && inputs.tag != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          sha256sum dist/*.zip > checksums.txt
+          gh release create "$TAG" dist/*.zip checksums.txt \
+            --title "$TAG" \
+            --generate-notes
